@@ -79,7 +79,8 @@ def save_expired_link(db: Session, link: Link) -> None:
 
 
 def delete_if_expired(db: Session, link: Link) -> bool:
-    if link.expires_at and link.expires_at <= now_utc():
+    expires_at = normalize_datetime(link.expires_at)
+    if expires_at and expires_at <= now_utc():
         save_expired_link(db, link)
         db.delete(link)
         db.commit()

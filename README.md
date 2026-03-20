@@ -1,61 +1,44 @@
 # FastAPI URL Shortener
 
-Сервис сокращения ссылок на `FastAPI` с регистрацией, статистикой, TTL и кэшированием в `Redis`.
+Сервис сокращения ссылок на `FastAPI` с регистрацией, статистикой, TTL, кэшированием в `Redis` и тестовым покрытием для ДЗ по тестированию.
 
-## Что реализовано
+## Функциональность
 
-Обязательные функции:
-- `POST /links/shorten` - создание короткой ссылки.
-- `GET /links/{short_code}` - редирект на оригинальный URL.
-- `PUT /links/{short_code}` - обновление ссылки.
-- `DELETE /links/{short_code}` - удаление ссылки.
-- `GET /links/{short_code}/stats` - статистика по ссылке.
-- `POST /links/shorten` с `custom_alias` - кастомный alias с проверкой уникальности.
-- `GET /links/search?original_url=...` - поиск ссылки по оригинальному URL.
-- `POST /links/shorten` с `expires_at` - срок жизни ссылки.
-
-Дополнительные функции:
-- `POST /links/cleanup/inactive` - удаление неиспользуемых ссылок по `N` дням.
-- `GET /links/expired/history` - история истекших ссылок.
-- `POST /links/cleanup/expired` - принудительная очистка истекших ссылок.
-
-Регистрация и доступ:
+Основные endpoint-ы:
 - `POST /auth/register`
 - `POST /auth/login`
-- `PUT /links/{short_code}` и `DELETE /links/{short_code}` доступны только владельцу ссылки.
+- `POST /links/shorten`
+- `GET /links/{short_code}`
+- `PUT /links/{short_code}`
+- `DELETE /links/{short_code}`
+- `GET /links/{short_code}/stats`
+- `GET /links/search?original_url=...`
 
-Кэширование:
-- кэшируются редирект, статистика и поиск;
-- при обновлении и удалении ссылки кэш инвалидируется.
+Дополнительные endpoint-ы:
+- `POST /links/cleanup/inactive`
+- `GET /links/expired/history`
+- `POST /links/cleanup/expired`
 
-## Стек
+Особенности:
+- кастомные alias;
+- срок жизни ссылки через `expires_at`;
+- ограничение `PUT/DELETE` только для владельца;
+- кэш для редиректа, статистики и поиска;
+- deploy на `Render`.
 
-- `FastAPI`
-- `SQLAlchemy`
-- `SQLite` по умолчанию для локального запуска
-- `PostgreSQL` для deploy
-- `Redis`
-- `JWT`
+## Запуск
 
-## Локальный запуск
-
-### Без Docker
+### Локально
 
 ```bash
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Приложение будет доступно по адресу:
+Адреса:
 - `http://127.0.0.1:8000/`
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/health`
-
-По умолчанию используется локальная база:
-- `sqlite:///./shortener.db`
-
-Если `Redis` не запущен, приложение все равно работает. Просто будет сообщение:
-- `Redis unavailable, cache disabled`
 
 ### Через Docker
 
@@ -63,11 +46,11 @@ uvicorn app.main:app --reload
 docker compose up --build
 ```
 
-## Переменные окружения
+## Конфигурация
 
-Пример есть в [.env.example](c:\Users\vital\Documents\Мага\2 сем\pyhton\fastAPI\.env.example).
+Пример переменных есть в `.env.example`.
 
-Основные переменные:
+Основные env:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `SECRET_KEY`
@@ -75,35 +58,72 @@ docker compose up --build
 - `DEFAULT_INACTIVE_DAYS`
 - `CACHE_TTL_SECONDS`
 
-Примечание:
-- локально `BASE_URL` можно не задавать;
-- тогда `short_url` будет собираться автоматически из текущего адреса запроса;
-- на `Render` лучше задать `BASE_URL` явно.
+Локально `BASE_URL` можно не задавать. Тогда `short_url` собирается автоматически из текущего host.
 
-## Как тестировать в Swagger
+## Тестирование
 
-Важное различие:
-- `short_code` - это только код, например `my-link-1`
-- `short_url` - это полная короткая ссылка, например `http://127.0.0.1:8000/links/my-link-1`
+Тесты лежат в папке `tests/` и делятся на:
+- юнит-тесты для auth, cache, utility-логики и TTL;
+- функциональные тесты для всех основных endpoint-ов через `TestClient`;
+- нагрузочный сценарий в `locustfile.py`.
+
+Файлы:
+- `tests/conftest.py`
+- `tests/test_unit.py`
+- `tests/test_api.py`
+- `pytest.ini`
+
+### Запуск тестов
+
+```bash
+pytest tests
+```
+
+### Проверка покрытия
+
+```bash
+coverage run -m pytest tests
+coverage html
+coverage report
+```
+
+Последний успешный прогон в проекте:
+- `47 passed`
+- общее покрытие: `95%`
+
+HTML-отчет уже сгенерирован и лежит в:
+- `htmlcov/index.html`
+
+### Нагрузочное тестирование
+
+Пример запуска `Locust`:
+
+```bash
+locust -f locustfile.py --host http://127.0.0.1:8000
+```
+
+Сценарий проверяет:
+- массовое создание коротких ссылок;
+- поиск ссылок;
+- healthcheck;
+- базовую нагрузку на CRUD и кэшируемые endpoint-ы.
+
+## Как проверять API вручную
+
+Важно:
+- `short_code` это только код, например `my-link-1`
+- `short_url` это полная ссылка, например `http://127.0.0.1:8000/links/my-link-1`
 
 Если endpoint ожидает `short_code`, не нужно вставлять полный URL.
 
-Пример:
-- правильно: `my-link-1`
-- неправильно: `http://127.0.0.1:8000/links/my-link-1`
+Для `GET /links/{short_code}`:
+- в Swagger возможен `TypeError: NetworkError when attempting to fetch resource`
+- это нормальная особенность redirect endpoint-а
+- сам редирект лучше проверять открытием `short_url` в браузере
 
-Еще один важный момент:
-- `GET /links/{short_code}` делает реальный HTTP redirect;
-- в Swagger UI такой endpoint может показывать `TypeError: NetworkError when attempting to fetch resource`;
-- это не обязательно ошибка API;
-- редирект лучше проверять обычным открытием `short_url` в браузере.
+### Базовый сценарий ручной проверки
 
-## Рекомендуемый сценарий проверки
-
-### 1. Регистрация
-
-`POST /auth/register`
-
+1. `POST /auth/register`
 ```json
 {
   "email": "test@example.com",
@@ -111,14 +131,7 @@ docker compose up --build
 }
 ```
 
-Ожидаемо:
-- `201 Created`
-- в ответе есть `id` и `email`
-
-### 2. Логин
-
-`POST /auth/login`
-
+2. `POST /auth/login`
 ```json
 {
   "email": "test@example.com",
@@ -126,14 +139,7 @@ docker compose up --build
 }
 ```
 
-Ожидаемо:
-- `200 OK`
-- в ответе есть `access_token`
-
-### 3. Создание короткой ссылки
-
-`POST /links/shorten`
-
+3. `POST /links/shorten`
 ```json
 {
   "original_url": "https://example.com/page",
@@ -141,175 +147,40 @@ docker compose up --build
 }
 ```
 
-Ожидаемо:
-- `201 Created`
-- в ответе есть:
-  - `short_code`
-  - `short_url`
-  - `original_url`
+4. открыть `short_url` в браузере
 
-Пример ответа:
+5. `GET /links/{short_code}/stats`
 
-```json
-{
-  "short_code": "my-link-1",
-  "short_url": "http://127.0.0.1:8000/links/my-link-1",
-  "original_url": "https://example.com/page",
-  "created_at": "2026-03-15T20:47:55.996716",
-  "expires_at": null,
-  "owner_id": null
-}
-```
+6. `GET /links/search?original_url=https://example.com/page`
 
-### 4. Проверка редиректа
-
-Открой в браузере:
-
-```text
-http://127.0.0.1:8000/links/my-link-1
-```
-
-Ожидаемо:
-- браузер перекинет на `https://example.com/page`
-
-### 5. Проверка статистики
-
-`GET /links/{short_code}/stats`
-
-В поле `short_code` вставить:
-
-```text
-my-link-1
-```
-
-Ожидаемо:
-- `click_count` увеличен
-- `last_used_at` заполнен
-
-### 6. Поиск по оригинальному URL
-
-`GET /links/search`
-
-Параметр:
-
-```text
-original_url=https://example.com/page
-```
-
-Ожидаемо:
-- `found: true`
-- вернутся `short_code` и `short_url`
-
-### 7. Авторизация в Swagger
-
-После логина нажмите `Authorize` и вставьте токен.
-
-Если Swagger не добавляет префикс сам, используйте:
-
-```text
-Bearer <access_token>
-```
-
-### 8. Обновление ссылки
-
-`PUT /links/{short_code}`
-
-Параметр `short_code`:
-
-```text
-my-link-1
-```
-
-Тело:
-
-```json
-{
-  "original_url": "https://example.com/new-page",
-  "expires_at": "2030-12-31T23:59:00Z"
-}
-```
-
-Ожидаемо:
-- `200 OK`
-- ссылка обновлена
-
-### 9. Удаление ссылки
-
-`DELETE /links/{short_code}`
-
-Параметр:
-
-```text
-my-link-1
-```
-
-Ожидаемо:
-- `204 No Content`
-
-После этого:
-- `GET /links/my-link-1` должен вернуть `404`
-
-## Примеры curl
-
-### Регистрация
-
-```bash
-curl -X POST http://127.0.0.1:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"user@example.com\",\"password\":\"secret123\"}"
-```
-
-### Логин
-
-```bash
-curl -X POST http://127.0.0.1:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"user@example.com\",\"password\":\"secret123\"}"
-```
-
-### Создание короткой ссылки
-
-```bash
-curl -X POST http://127.0.0.1:8000/links/shorten \
-  -H "Content-Type: application/json" \
-  -d "{\"original_url\":\"https://example.com/page\",\"custom_alias\":\"my-link-1\"}"
-```
-
-### Поиск ссылки
-
-```bash
-curl "http://127.0.0.1:8000/links/search?original_url=https://example.com/page"
-```
+7. после авторизации в Swagger:
+- `PUT /links/{short_code}`
+- `DELETE /links/{short_code}`
 
 ## Deploy на Render
 
-В проекте есть [render.yaml](c:\Users\vital\Documents\Мага\2 сем\pyhton\fastAPI\render.yaml) для `Blueprint Deploy`.
+В проекте есть `render.yaml`.
 
-Что поднимается:
-- web service
-- PostgreSQL
-- Redis
+Для полного deploy нужны:
+- `Web Service`
+- `Postgres`
+- `Key Value`
 
-После deploy:
-1. задайте `BASE_URL` равным публичному адресу сервиса на `Render`;
-2. проверьте `GET /health`;
-3. проверьте `POST /links/shorten` и редирект по `short_url`.
-
-Если деплой без Blueprint, нужны:
+В `Environment` web service должны быть:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `SECRET_KEY`
 - `BASE_URL`
 
-## Что я успел проверить
+На `Render` `BASE_URL` должен быть равен публичному домену сервиса, например:
 
-Ручная проверка по текущей сессии:
-- корневой маршрут `/` работает;
-- `POST /auth/register` после замены схемы хеширования больше не падает из-за `bcrypt`;
-- `POST /links/shorten` создает ссылку и возвращает корректный `short_url`;
-- `GET /links/{short_code}` реально редиректит в браузере.
+```text
+https://fastapi-project-3-ftlx.onrender.com
+```
 
-Что не было прогнано автоматически из терминала:
-- полный набор интеграционных тестов;
-- локальный запуск через `docker compose`;
-- deploy на `Render`.
+## Что было исправлено в рамках ДЗ по тестированию
+
+Во время написания тестов был найден и исправлен дефект:
+- в логике TTL происходило сравнение naive/aware datetime в `delete_if_expired()`;
+- это ломало проверку истекших ссылок на SQLite;
+- после исправления сценарии с `expires_at` покрыты тестами и проходят стабильно.
